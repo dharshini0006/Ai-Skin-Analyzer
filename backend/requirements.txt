@@ -1,4 +1,3 @@
-# AI Skin Analyzer — Backend Dependencies
 # Install: pip install -r requirements.txt
 
 fastapi==0.115.5
