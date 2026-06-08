@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DermAI · Skin Intelligence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg:      #070910;
+    --bg2:     #0d0f18;
+    --border:  rgba(99,179,237,0.12);
+    --accent:  #63b3ed;
+    --accent2: #9f7aea;
+    --accent3: #68d391;
+    --rose:    #fc8181;
+    --amber:   #f6ad55;
+    --text:    #e2e8f0;
+    --muted:   #718096;
+
+    /* Backend URL — change if deploying remotely */
+    --api: ;
+  }
+
+  /* ── BASE ── */
+  body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; }
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+  }
+  .app { display:flex; flex-direction:column; min-height:100vh; position:relative; z-index:1; }
+  .screen { display:none; flex-direction:column; }
+  .screen.active { display:flex; }
+
+  /* ── UPLOAD ── */
+  #upload-screen {
+    align-items:center; justify-content:center;
+    min-height:100vh; padding:2rem; position:relative; overflow:hidden;
+  }
+  .grid-bg {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(99,179,237,.04) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(99,179,237,.04) 1px,transparent 1px);
+    background-size:40px 40px;
+    mask-image:radial-gradient(ellipse at center,black 30%,transparent 80%);
+  }
+  .blob { position:absolute; border-radius:50%; filter:blur(100px); pointer-events:none; }
+  .blob1 { width:500px;height:500px;background:rgba(99,179,237,.1);top:-150px;left:-150px; }
+  .blob2 { width:400px;height:400px;background:rgba(159,122,234,.09);bottom:-100px;right:-100px; }
+
+  .upload-hero { text-align:center; z-index:1; max-width:520px; width:100%; }
+
+  .badge {
+    display:inline-flex; align-items:center; gap:8px;
+    background:rgba(99,179,237,.08); border:1px solid rgba(99,179,237,.2);
+    border-radius:4px; padding:5px 14px;
+    font-size:11px; letter-spacing:3px; text-transform:uppercase;
+    color:var(--accent); margin-bottom:2rem;
+    font-family:'DM Mono',monospace;
+  }
+  .badge-dot { width:5px;height:5px;background:var(--accent3);border-radius:50%;animation:blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+
+  .hero-title { font-size:clamp(2.8rem,7vw,4.5rem); font-weight:900; line-height:1; margin-bottom:1.2rem; letter-spacing:-2px; }
+  .hero-title .l1 { display:block; color:var(--text); }
+  .hero-title .l2 { display:block; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero-sub { color:var(--muted); font-size:1rem; margin-bottom:2.5rem; line-height:1.65; }
+
+  .upload-zone {
+    background:var(--bg2); border:1.5px dashed rgba(99,179,237,.25);
+    border-radius:16px; padding:2.5rem 2rem;
+    cursor:pointer; transition:all .25s; margin-bottom:1.2rem;
+    position:relative; overflow:hidden;
+  }
+  .upload-zone::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% 0%,rgba(99,179,237,.06),transparent 60%); pointer-events:none; }
+  .upload-zone:hover,.upload-zone.over { border-color:var(--accent); background:rgba(99,179,237,.04); border-style:solid; }
+
+  .u-icon { width:56px;height:56px;border-radius:12px;background:rgba(99,179,237,.1);border:1px solid rgba(99,179,237,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.6rem; }
+  .u-txt { font-size:1rem;font-weight:600;margin-bottom:.3rem; }
+  .u-hint { font-size:.82rem;color:var(--muted); }
+  .u-preview { width:110px;height:110px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);margin:0 auto;display:block;box-shadow:0 0 40px rgba(99,179,237,.3); }
+  input[type=file] { display:none; }
+
+  /* Error banner */
+  .err-banner {
+    background:rgba(252,129,129,.08); border:1px solid rgba(252,129,129,.25);
+    border-radius:8px; padding:.8rem 1rem; font-size:.82rem;
+    color:#fca5a5; line-height:1.5; margin-bottom:1rem; display:none;
+  }
+
+  .analyze-btn {
+    width:100%; background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border:none; border-radius:10px; padding:1rem 1.5rem;
+    font-size:.95rem; font-weight:700; color:#070910;
+    cursor:pointer; transition:all .25s;
+    font-family:'Outfit',sans-serif; letter-spacing:1px; text-transform:uppercase;
+  }
+  .analyze-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 25px rgba(99,179,237,.35); }
+  .analyze-btn:disabled { opacity:.35; cursor:not-allowed; }
+
+  .pills { display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:1.8rem; }
+  .pill { background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:4px;padding:4px 12px;font-size:.75rem;color:var(--muted);font-family:'DM Mono',monospace; }
+  .disclaimer { margin-top:1.5rem;font-size:.73rem;color:var(--muted);opacity:.5;line-height:1.5; }
+
+  /* ── SCAN ── */
+  #scan-screen { align-items:center;justify-content:center;min-height:100vh;padding:2rem; }
+  .scan-wrap { text-align:center;max-width:380px;width:100%; }
+  .face-frame { position:relative;width:200px;height:200px;margin:0 auto 2rem; }
+  .face-img { width:200px;height:200px;border-radius:50%;object-fit:cover;display:block;filter:grayscale(20%); }
+  .ring { position:absolute;inset:-12px;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);animation:spin 1.8s linear infinite; }
+  .ring2 { position:absolute;inset:-22px;border-radius:50%;border:1px solid transparent;border-left-color:var(--accent2);animation:spin 3s linear infinite reverse; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .scan-line { position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scanline 2.5s ease-in-out infinite;top:0; }
+  @keyframes scanline { 0%,100%{top:0;opacity:0}5%{opacity:1}95%{opacity:1}99%{top:calc(100% - 2px);opacity:0} }
+  .scan-label { font-size:1.4rem;font-weight:800;letter-spacing:-.5px;margin-bottom:.4rem; }
+  .scan-status { color:var(--muted);font-size:.85rem;margin-bottom:1.5rem;font-family:'DM Mono',monospace; }
+  .progress-track { background:rgba(255,255,255,.06);border-radius:2px;height:3px;overflow:hidden;margin-bottom:1.5rem; }
+  .progress-bar { height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:0%;transition:width .4s ease; }
+  .steps { display:flex;flex-direction:column;gap:6px;text-align:left; }
+  .step { display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.83rem;font-family:'DM Mono',monospace;opacity:.3;transition:all .3s;background:rgba(255,255,255,.02); }
+  .step .dot { width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0; }
+  .step.active { opacity:1;color:var(--accent);background:rgba(99,179,237,.08); }
+  .step.active .dot { animation:blink 1s infinite; }
+  .step.done { opacity:.7;color:var(--accent3); }
+
+  /* ── DASHBOARD ── */
+  #dashboard-screen { min-height:100vh; }
+  .dash-nav {
+    display:flex;align-items:center;justify-content:space-between;
+    padding:1rem 1.5rem;border-bottom:1px solid var(--border);
+    background:rgba(7,9,16,.85);backdrop-filter:blur(12px);
+    position:sticky;top:0;z-index:100;
+  }
+  .nav-logo { font-size:1rem;font-weight:800;letter-spacing:-.5px;font-family:'DM Mono',monospace;color:var(--accent); }
+  .nav-badge { background:rgba(104,211,145,.1);color:var(--accent3);border:1px solid rgba(104,211,145,.25);border-radius:4px;padding:3px 10px;font-size:.72rem;font-weight:600;font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase; }
+
+  .dash-body { padding:1.5rem;display:flex;flex-direction:column;gap:1rem;max-width:600px;margin:0 auto;width:100%; }
+
+  /* Hero card */
+  .hero-card { background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.5rem;display:flex;align-items:center;gap:1.5rem;position:relative;overflow:hidden; }
+  .hero-card::before { content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top left,rgba(99,179,237,.07),transparent 60%);pointer-events:none; }
+  .photo-wrap { position:relative;flex-shrink:0; }
+  .photo-wrap img { width:88px;height:88px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--accent); }
+  .acne-marker { position:absolute;border-radius:50%;background:rgba(252,129,129,.6);border:1px solid var(--rose);animation:pdot 2.5s ease-in-out infinite; }
+  @keyframes pdot { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)} }
+  .score-block { flex:1; }
+  .score-label { font-size:.72rem;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:.3rem;font-family:'DM Mono',monospace; }
+  .score-num { font-size:3.5rem;font-weight:900;line-height:1;letter-spacing:-2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.4rem; }
+  .score-grade { display:inline-flex;align-items:center;gap:5px;background:rgba(104,211,145,.1);color:var(--accent3);border:1px solid rgba(104,211,145,.25);border-radius:4px;padding:3px 9px;font-size:.75rem;font-weight:600;margin-bottom:.5rem; }
+  .skin-type { font-size:.82rem;color:var(--muted); }
+  .skin-type strong { color:var(--text); }
+
+  /* Stat row */
+  .stat-row { display:grid;grid-template-columns:repeat(3,1fr);gap:8px; }
+  .stat-box { background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1rem;text-align:center;position:relative; }
+  .stat-box::after { content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;border-radius:0 0 2px 2px; }
+  .stat-box.bl::after{background:var(--accent)} .stat-box.pu::after{background:var(--accent2)} .stat-box.gr::after{background:var(--accent3)}
+  .s-icon { font-size:1.3rem;margin-bottom:.3rem; }
+  .s-val { font-size:1.4rem;font-weight:800;letter-spacing:-.5px; }
+  .s-lab { font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;font-family:'DM Mono',monospace; }
+
+  /* Section title */
+  .sec { font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;color:var(--muted);margin-bottom:.8rem;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:8px; }
+  .sec::before { content:'';width:20px;height:1px;background:var(--border); }
+
+  /* Concerns */
+  .concerns-card { background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2rem; }
+  .c-row { display:flex;align-items:center;gap:10px;margin-bottom:10px; }
+  .c-row:last-child { margin-bottom:0; }
+  .c-icon { font-size:.9rem;width:18px;text-align:center;flex-shrink:0; }
+  .c-name { font-size:.78rem;width:80px;color:var(--muted);flex-shrink:0;font-family:'DM Mono',monospace; }
+  .c-track { flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden; }
+  .c-fill { height:100%;border-radius:2px;transition:width 1.5s cubic-bezier(.16,1,.3,1);width:0%; }
+  .c-pct { font-size:.75rem;font-weight:600;width:30px;text-align:right;flex-shrink:0;font-family:'DM Mono',monospace; }
+
+  /* Env */
+  .env-card { background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2rem; }
+  .env-loc { font-size:.75rem;color:var(--muted);margin-bottom:1rem;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px; }
+  .env-loc strong { color:var(--text); }
+  .env-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:8px; }
+  .env-item { background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:.8rem;display:flex;align-items:center;gap:8px; }
+  .env-ico { width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0; }
+  .env-val { font-size:.95rem;font-weight:700; }
+  .env-sub { font-size:.7rem;color:var(--muted);font-family:'DM Mono',monospace; }
+  .env-alert { margin-top:.8rem;background:rgba(246,173,85,.08);border:1px solid rgba(246,173,85,.2);border-radius:8px;padding:.8rem 1rem;font-size:.8rem;color:#f6c270;display:flex;gap:8px;align-items:flex-start;line-height:1.5; }
+
+  /* Skin age */
+  .age-card { background:linear-gradient(135deg,rgba(99,179,237,.08),rgba(159,122,234,.08));border:1px solid rgba(99,179,237,.15);border-radius:14px;padding:1.2rem 1.5rem;display:flex;align-items:center;gap:1rem; }
+  .age-icon { font-size:2rem; }
+  .age-lab { font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;font-family:'DM Mono',monospace; }
+  .age-val { font-size:2rem;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text; }
+  .age-note { font-size:.78rem;color:var(--muted); }
+
+  /* Routine */
+  .routine-card { background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2rem; }
+  .r-tabs { display:flex;gap:4px;margin-bottom:1rem; }
+  .r-tab { flex:1;padding:7px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s;text-transform:uppercase;letter-spacing:1px; }
+  .r-tab.on { background:rgba(99,179,237,.12);border-color:var(--accent);color:var(--accent); }
+  .r-steps { display:flex;flex-direction:column;gap:6px; }
+  .r-step { display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-radius:8px;background:rgba(255,255,255,.02);opacity:0;transform:translateY(6px);transition:all .35s ease; }
+  .r-step.show { opacity:1;transform:none; }
+  .r-num { width:20px;height:20px;border-radius:50%;background:rgba(99,179,237,.15);border:1px solid rgba(99,179,237,.3);color:var(--accent);font-size:.68rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-family:'DM Mono',monospace; }
+  .r-name { font-size:.85rem;font-weight:600; }
+  .r-desc { font-size:.75rem;color:var(--muted);margin-top:2px; }
+
+  /* Recs */
+  .recs-card { background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2rem; }
+  .rec { display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04); }
+  .rec:last-child { border-bottom:none;padding-bottom:0; }
+  .priority { padding:2px 7px;border-radius:3px;font-size:.65rem;font-weight:700;flex-shrink:0;margin-top:3px;text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace; }
+  .p-High{background:rgba(252,129,129,.15);color:#fca5a5}
+  .p-Med{background:rgba(246,173,85,.15);color:#fcd09a}
+  .p-Low{background:rgba(104,211,145,.15);color:#9ae6b4}
+  .rec-txt { font-size:.83rem;line-height:1.55;color:var(--muted); }
+  .rec-txt strong { color:var(--text); }
+
+  .note-card { background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:1rem 1.2rem;font-size:.82rem;color:var(--muted);line-height:1.6;font-style:italic;text-align:center; }
+
+  .rescan-btn { width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:.85rem;color:var(--muted);font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s;text-transform:uppercase;letter-spacing:1px;margin-bottom:1rem; }
+  .rescan-btn:hover { border-color:var(--accent);color:var(--accent); }
+
+  @media(max-width:480px){
+    .hero-card{flex-direction:column;text-align:center}
+    .age-card{flex-direction:column;text-align:center}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ====== UPLOAD ====== -->
+<div id="upload-screen" class="screen active">
+  <div class="grid-bg"></div>
+  <div class="blob blob1"></div>
+  <div class="blob blob2"></div>
+  <div class="upload-hero">
+    <div class="badge"><div class="badge-dot"></div>DermAI · Skin Intelligence</div>
+    <h1 class="hero-title">
+      <span class="l1">Know Your</span>
+      <span class="l2">Skin Better.</span>
+    </h1>
+    <p class="hero-sub">Upload a selfie. Get an AI-powered skin analysis with personalized skincare routine — backed by Gemini Vision + live environment data.</p>
+
+    <div class="upload-zone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <div id="placeholder">
+        <div class="u-icon">📸</div>
+        <div class="u-txt">Drop your selfie here</div>
+        <div class="u-hint">or click to browse · JPG, PNG, WEBP</div>
+      </div>
+      <img id="preview-img" class="u-preview" style="display:none" alt="">
+    </div>
+
+    <div class="err-banner" id="errBanner"></div>
+    <input type="file" id="fileInput" accept="image/*">
+
+    <button class="analyze-btn" id="analyzeBtn" onclick="startScan()" disabled>
+      Analyze My Skin →
+    </button>
+
+    <div class="pills">
+      <span class="pill">acne_detection</span>
+      <span class="pill">hydration_score</span>
+      <span class="pill">uv_risk</span>
+      <span class="pill">routine_gen</span>
+      <span class="pill">skin_age</span>
+      <span class="pill">live_env_data</span>
+    </div>
+    <p class="disclaimer">For informational purposes only. Not a substitute for professional dermatological advice.</p>
+  </div>
+</div>
+
+<!-- ====== SCAN ====== -->
+<div id="scan-screen" class="screen">
+  <div class="scan-wrap">
+    <div class="face-frame">
+      <img id="scan-img" class="face-img" src="" alt="">
+      <div class="ring"></div>
+      <div class="ring2"></div>
+      <div class="scan-line"></div>
+    </div>
+    <div class="scan-label">Analyzing...</div>
+    <div class="scan-status" id="scanStatus">Initializing</div>
+    <div class="progress-track"><div class="progress-bar" id="prog"></div></div>
+    <div class="steps">
+      <div class="step" id="s1"><div class="dot"></div>Detecting facial landmarks</div>
+      <div class="step" id="s2"><div class="dot"></div>Analyzing pores &amp; texture</div>
+      <div class="step" id="s3"><div class="dot"></div>Mapping acne &amp; redness</div>
+      <div class="step" id="s4"><div class="dot"></div>Measuring hydration levels</div>
+      <div class="step" id="s5"><div class="dot"></div>Fetching live UV &amp; AQI data</div>
+      <div class="step" id="s6"><div class="dot"></div>Generating personalized report</div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== DASHBOARD ====== -->
+<div id="dashboard-screen" class="screen">
+  <div class="dash-nav">
+    <div class="nav-logo">DERM_AI</div>
+    <div class="nav-badge">✓ Analysis Complete</div>
+  </div>
+  <div class="dash-body">
+
+    <!-- Score Hero -->
+    <div class="hero-card">
+      <div class="photo-wrap">
+        <img id="result-img" src="" alt="">
+        <div class="acne-marker" id="dot1" style="width:9px;height:9px;top:22%;left:15%"></div>
+        <div class="acne-marker" id="dot2" style="width:7px;height:7px;top:38%;left:74%;animation-delay:.6s"></div>
+        <div class="acne-marker" id="dot3" style="width:8px;height:8px;top:62%;left:22%;animation-delay:1.1s"></div>
+      </div>
+      <div class="score-block">
+        <div class="score-label">Overall Skin Score</div>
+        <div class="score-num" id="animScore">—</div>
+        <div class="score-grade" id="gradeTag">Analyzing...</div>
+        <div class="skin-type" id="skinTypeTag">Type: <strong>—</strong></div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row">
+      <div class="stat-box bl"><div class="s-icon">💧</div><div class="s-val" id="hydVal" style="color:var(--accent)">—</div><div class="s-lab">Hydration</div></div>
+      <div class="stat-box pu"><div class="s-icon">🌊</div><div class="s-val" id="oilVal" style="color:var(--accent2)">—</div><div class="s-lab">Oiliness</div></div>
+      <div class="stat-box gr"><div class="s-icon">🧬</div><div class="s-val" id="ageVal" style="color:var(--accent3)">—</div><div class="s-lab">Skin Age</div></div>
+    </div>
+
+    <!-- Concerns -->
+    <div class="concerns-card">
+      <div class="sec">Concern Analysis</div>
+      <div class="c-row"><div class="c-icon">🔴</div><div class="c-name">Acne</div><div class="c-track"><div class="c-fill" id="b-acne" style="background:var(--rose)"></div></div><div class="c-pct" id="p-acne" style="color:var(--rose)">—</div></div>
+      <div class="c-row"><div class="c-icon">🟤</div><div class="c-name">Dark Spots</div><div class="c-track"><div class="c-fill" id="b-dark" style="background:var(--accent2)"></div></div><div class="c-pct" id="p-dark" style="color:var(--accent2)">—</div></div>
+      <div class="c-row"><div class="c-icon">🟠</div><div class="c-name">Redness</div><div class="c-track"><div class="c-fill" id="b-red" style="background:var(--amber)"></div></div><div class="c-pct" id="p-red" style="color:var(--amber)">—</div></div>
+      <div class="c-row"><div class="c-icon">🟡</div><div class="c-name">Tanning</div><div class="c-track"><div class="c-fill" id="b-tan" style="background:#fbbf24"></div></div><div class="c-pct" id="p-tan" style="color:#fbbf24">—</div></div>
+      <div class="c-row"><div class="c-icon">✨</div><div class="c-name">Oiliness</div><div class="c-track"><div class="c-fill" id="b-oil" style="background:var(--accent)"></div></div><div class="c-pct" id="p-oil" style="color:var(--accent)">—</div></div>
+    </div>
+
+    <!-- Skin Age -->
+    <div class="age-card">
+      <div class="age-icon">🧬</div>
+      <div>
+        <div class="age-lab">Biological Skin Age</div>
+        <div class="age-val" id="bigAge">—</div>
+        <div class="age-note" id="ageCmp">Based on visible skin analysis</div>
+      </div>
+    </div>
+
+    <!-- Environment -->
+    <div class="env-card">
+      <div class="sec">Environment Intelligence</div>
+      <div class="env-loc" id="envLoc">📍 <strong>Chennai, TN</strong> · Fetching live data…</div>
+      <div class="env-grid">
+        <div class="env-item">
+          <div class="env-ico" style="background:rgba(246,173,85,.12)">☀️</div>
+          <div><div class="env-val" id="uvVal" style="color:var(--amber)">—</div><div class="env-sub" id="uvLab">UV Index</div></div>
+        </div>
+        <div class="env-item">
+          <div class="env-ico" style="background:rgba(252,129,129,.1)">🏭</div>
+          <div><div class="env-val" id="aqiVal" style="color:var(--rose)">—</div><div class="env-sub" id="aqiLab">AQI</div></div>
+        </div>
+        <div class="env-item">
+          <div class="env-ico" style="background:rgba(99,179,237,.1)">💦</div>
+          <div><div class="env-val" id="humVal" style="color:var(--accent)">—</div><div class="env-sub">Humidity</div></div>
+        </div>
+        <div class="env-item">
+          <div class="env-ico" style="background:rgba(159,122,234,.1)">🌡️</div>
+          <div><div class="env-val" id="tempVal" style="color:var(--accent2)">—</div><div class="env-sub">Temperature</div></div>
+        </div>
+      </div>
+      <div class="env-alert" id="envAlert">⚠️ Fetching environmental data…</div>
+    </div>
+
+    <!-- Routine -->
+    <div class="routine-card">
+      <div class="sec">AI Skincare Routine</div>
+      <div class="r-tabs">
+        <button class="r-tab on" onclick="switchTab('am',this)">☀️ Morning</button>
+        <button class="r-tab" onclick="switchTab('pm',this)">🌙 Night</button>
+      </div>
+      <div id="tab-am" class="r-steps"></div>
+      <div id="tab-pm" class="r-steps" style="display:none"></div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="recs-card">
+      <div class="sec">Personalized Recommendations</div>
+      <div id="recsContainer"></div>
+    </div>
+
+    <div class="note-card" id="noteCard">—</div>
+    <button class="rescan-btn" onclick="resetApp()">↩ Scan New Photo</button>
+  </div>
+</div>
+</div><!-- /app -->
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+const API_BASE = 'http://localhost:8000';  // ← change if backend is on a different host/port
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let uploadedFile = null;
+
+// ── FILE INPUT ──────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  uploadedFile = file;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('preview-img').src = ev.target.result;
+    document.getElementById('preview-img').style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+    hideError();
+  };
+  reader.readAsDataURL(file);
+});
+
+// ── DRAG & DROP ─────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  }
+});
+
+// ── UTILS ───────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showError(msg) {
+  const el = document.getElementById('errBanner');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideError() { document.getElementById('errBanner').style.display = 'none'; }
+
+// ── CALL BACKEND /analyze ───────────────────────────────────────────────────
+async function callBackend(file) {
+  const form = new FormData();
+  form.append('file', file);
+
+  const resp = await fetch(`${API_BASE}/analyze`, { method: 'POST', body: form });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(err.detail || `Server error ${resp.status}`);
+  }
+  return resp.json();
+}
+
+// ── LIVE WEATHER (Open-Meteo — no API key needed) ───────────────────────────
+async function fetchEnv() {
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707' +
+                '&current=temperature_2m,relative_humidity_2m,uv_index&timezone=Asia%2FKolkata&forecast_days=1';
+    const d = await (await fetch(url)).json();
+    const c = d.current;
+    return { temp: Math.round(c.temperature_2m), humidity: Math.round(c.relative_humidity_2m), uv: Math.round(c.uv_index), city: 'Chennai, Tamil Nadu' };
+  } catch {
+    return { temp: 34, humidity: 78, uv: 9, city: 'Chennai, Tamil Nadu' };
+  }
+}
+
+// ── MAIN FLOW ───────────────────────────────────────────────────────────────
+async function startScan() {
+  if (!uploadedFile) return;
+  hideError();
+
+  document.getElementById('scan-img').src = document.getElementById('preview-img').src;
+  document.getElementById('result-img').src = document.getElementById('preview-img').src;
+  showScreen('scan-screen');
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active','done'));
+  document.getElementById('prog').style.width = '0%';
+
+  // Fire AI + weather in parallel
+  const [aiRes, envRes] = await Promise.allSettled([
+    callBackend(uploadedFile),
+    fetchEnv()
+  ]);
+
+  const skin = aiRes.status === 'fulfilled' ? aiRes.value : null;
+  const env  = envRes.status === 'fulfilled' ? envRes.value : { temp:34, humidity:78, uv:9, city:'Chennai, Tamil Nadu' };
+
+  // Play animation (min 4s for UX feel), then show results
+  runAnimation(() => {
+    if (!skin) {
+      showScreen('upload-screen');
+      showError('⚠️ AI analysis failed. Make sure the backend is running and your API key is set. Error: ' + (aiRes.reason?.message || 'Unknown'));
+      return;
+    }
+    populateDashboard(skin, env);
+    showScreen('dashboard-screen');
+  });
+}
+
+// ── SCAN ANIMATION ──────────────────────────────────────────────────────────
+function runAnimation(onDone) {
+  const STEPS = [
+    { id:'s1', msg:'detecting facial landmarks…', p:16 },
+    { id:'s2', msg:'analyzing pores & texture…', p:32 },
+    { id:'s3', msg:'mapping acne & redness…', p:50 },
+    { id:'s4', msg:'measuring hydration levels…', p:66 },
+    { id:'s5', msg:'fetching UV & AQI data…', p:82 },
+    { id:'s6', msg:'generating personalized report…', p:100 },
+  ];
+  const prog = document.getElementById('prog');
+  const status = document.getElementById('scanStatus');
+  let i = 0;
+  function tick() {
+    if (i > 0) {
+      const prev = document.getElementById(STEPS[i-1].id);
+      prev.classList.remove('active'); prev.classList.add('done');
+    }
+    if (i >= STEPS.length) { setTimeout(onDone, 400); return; }
+    const s = STEPS[i];
+    document.getElementById(s.id).classList.add('active');
+    prog.style.width = s.p + '%';
+    status.textContent = s.msg;
+    i++;
+    setTimeout(tick, 700 + Math.random() * 250);
+  }
+  tick();
+}
+
+// ── POPULATE DASHBOARD ──────────────────────────────────────────────────────
+function populateDashboard(r, env) {
+  // Animate score counter
+  let n = 0;
+  const iv = setInterval(() => {
+    n = Math.min(n + 3, r.skinScore);
+    document.getElementById('animScore').textContent = n;
+    if (n >= r.skinScore) clearInterval(iv);
+  }, 22);
+
+  document.getElementById('gradeTag').textContent = '✓ ' + r.grade;
+  document.getElementById('skinTypeTag').innerHTML = 'Type: <strong>' + r.skinType + '</strong>';
+  document.getElementById('hydVal').textContent = r.hydrationPercent + '%';
+  document.getElementById('oilVal').textContent = r.oilinessLevel;
+  document.getElementById('ageVal').textContent = r.skinAge;
+  document.getElementById('bigAge').textContent = r.skinAge + ' yrs';
+
+  // Show acne markers only if acne is significant
+  ['dot1','dot2','dot3'].forEach(id => {
+    document.getElementById(id).style.display = r.concerns.acne > 20 ? 'block' : 'none';
+  });
+
+  // Concern bars (delayed for animation)
+  setTimeout(() => {
+    const c = r.concerns;
+    setBar('acne', c.acne); setBar('dark', c.darkSpots);
+    setBar('red',  c.redness); setBar('tan', c.tanning); setBar('oil', c.oiliness);
+  }, 350);
+
+  // Environment
+  document.getElementById('envLoc').innerHTML = '📍 <strong>' + env.city + '</strong> · Live Data';
+  document.getElementById('uvVal').textContent  = 'UV ' + env.uv;
+  document.getElementById('humVal').textContent = env.humidity + '%';
+  document.getElementById('tempVal').textContent = env.temp + '°C';
+
+  const { aqiEst, aqiLabel, uvLabel, advice } = buildEnvAdvice(env.uv, env.humidity, env.temp);
+  document.getElementById('aqiVal').textContent = 'AQI ~' + aqiEst;
+  document.getElementById('aqiLab').textContent = aqiLabel;
+  document.getElementById('uvLab').textContent  = uvLabel;
+  document.getElementById('envAlert').innerHTML = '⚠️ ' + advice;
+
+  // Routines
+  buildRoutine('am', r.morningRoutine);
+  buildRoutine('pm', r.nightRoutine);
+
+  // Recommendations
+  const rc = document.getElementById('recsContainer');
+  rc.innerHTML = '';
+  (r.recommendations || []).forEach(rec => {
+    rc.innerHTML += `
+      <div class="rec">
+        <span class="priority p-${rec.priority}">${rec.priority}</span>
+        <div class="rec-txt">${rec.text}</div>
+      </div>`;
+  });
+
+  document.getElementById('noteCard').textContent = r.note || '';
+}
+
+function setBar(id, val) {
+  document.getElementById('b-' + id).style.width = val + '%';
+  document.getElementById('p-' + id).textContent = val + '%';
+}
+
+function buildRoutine(tab, steps) {
+  const c = document.getElementById('tab-' + tab);
+  c.innerHTML = '';
+  (steps || []).forEach((s, i) => {
+    c.innerHTML += `
+      <div class="r-step" style="transition-delay:${i*80}ms">
+        <div class="r-num">${i+1}</div>
+        <div><div class="r-name">${s.name}</div><div class="r-desc">${s.desc}</div></div>
+      </div>`;
+  });
+  setTimeout(() => c.querySelectorAll('.r-step').forEach(el => el.classList.add('show')), 100);
+}
+
+function buildEnvAdvice(uv, humidity, temp) {
+  const uvLabel = uv >= 11 ? 'Extreme' : uv >= 8 ? 'Very High' : uv >= 6 ? 'High' : uv >= 3 ? 'Moderate' : 'Low';
+  const aqiEst  = humidity > 70 ? 120 + Math.floor(Math.random()*35) : 70 + Math.floor(Math.random()*40);
+  const aqiLabel = aqiEst > 150 ? 'Unhealthy' : aqiEst > 100 ? 'Moderate' : 'Good';
+  const parts = [];
+  if (uv >= 6)       parts.push(`UV ${uv} (${uvLabel}) — <strong>SPF 50+ is essential today.</strong>`);
+  if (humidity > 70) parts.push(`High humidity (${humidity}%) may worsen oiliness — use a lightweight moisturizer.`);
+  if (aqiEst > 100)  parts.push(`Pollution (AQI ~${aqiEst}) causes oxidative stress — use antioxidant serum tonight.`);
+  if (temp > 32)     parts.push(`Heat (${temp}°C) boosts sebum — double-cleanse in the evening.`);
+  return { aqiEst, aqiLabel, uvLabel, advice: parts.join(' ') || 'Environmental conditions are favorable for your skin today.' };
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.r-tab').forEach(t => t.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('tab-am').style.display = tab === 'am' ? 'flex' : 'none';
+  document.getElementById('tab-pm').style.display = tab === 'pm' ? 'flex' : 'none';
+  document.querySelectorAll('#tab-' + tab + ' .r-step').forEach((el, i) => {
+    el.classList.remove('show');
+    setTimeout(() => el.classList.add('show'), i*80 + 50);
+  });
+}
+
+function resetApp() {
+  uploadedFile = null;
+  document.getElementById('preview-img').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'block';
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('fileInput').value = '';
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active','done'));
+  document.getElementById('prog').style.width = '0%';
+  hideError();
+  showScreen('upload-screen');
+}
+</script>
+</body>
+</html>
